@@ -1,4 +1,10 @@
 # hatphi_test
+Details: I used a chat app design for this test 
+
+Steps to run the project :
+- run pub get on the project to fetch all the necessary dependencies
+- then enter the command flutter run on the terminal or click on the run button on android studio to run the project 
+
 
 A new Flutter project.
 
