@@ -1,22 +1,31 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:hatphi_test/provider/user_view_model.dart';
+import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
+import '../../../data/model/user_data_model.dart';
 import '../../../src/pages.dart';
 import '../../../utils/screen_utils.dart';
 import '../../components/custom_btn.dart';
 
-class Home extends StatefulWidget {
+
+/// The Home widget serves as the main screen for displaying user data.
+/// It utilizes Riverpod for state management and includes features such as
+/// search, filtering, pagination, and pull-to-refresh functionality.
+class Home extends ConsumerStatefulWidget {
   const Home({super.key});
 
   @override
-  State<Home> createState() => _HomeState();
+  ConsumerState<Home> createState() => _HomeState();
 }
 
-class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
+class _HomeState extends ConsumerState<Home> with SingleTickerProviderStateMixin {
   final PageController _pageController =
       PageController(initialPage: 0, viewportFraction: 1.0);
   double page = 0;
-  final TextEditingController _searchController = TextEditingController();
-  List<Map<String, String>> allChats = [
+  // Mock user data for demonstration
+  List<Map<String, String>> allUsers = [
     {
       'type': 'single',
       'name': 'Tabish Bin Tahir',
@@ -50,11 +59,20 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     },
   ];
 
+
   @override
   void initState() {
     super.initState();
-    filteredChats = allChats;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ref.read(userViewModelProvider.notifier).fetchUsers().then((value){
+        setState(() {
+          ref.watch(userViewModelProvider.notifier).filteredUsers.addAll(ref.read(userViewModelProvider.notifier).users);
+        });
+      });
+    });
+    filteredUsersList = allUsers;
 
+    /// Listen to page changes for animation or state updates
     _pageController.addListener(() {
       setState(() {
         page = _pageController.page!;
@@ -62,187 +80,204 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     });
   }
 
+  /// Handles navigation between tabs and applies filters accordingly
   void _navigate(int index) {
     const duration = Duration(milliseconds: 300);
     const curve = Curves.easeInOut;
-
+    /// Filters the user list based on the selected type ('all', 'group', 'single')
     switch (index) {
       case 0:
-        _filterChats('all');
+        _filterUser('all');
         break;
       case 1:
-        _filterChats('group');
+        _filterUser('group');
         break;
       case 2:
-        _filterChats('single');
+        _filterUser('single');
         break;
     }
 
     _pageController.animateToPage(index, duration: duration, curve: curve);
   }
 
-  List<Map<String, String>> filteredChats = [];
+
+  /// Filtered users list for displaying filtered results
+  List<Map<String, String>> filteredUsersList = [];
   String selectedFilter = 'all';
 
-  void _filterChats(String filter) {
+  void _filterUser(String filter) {
     setState(() {
       selectedFilter = filter;
       if (filter == 'all') {
-        filteredChats = allChats;
+        filteredUsersList = allUsers;
       } else {
-        filteredChats =
-            allChats.where((chat) => chat['type'] == filter).toList();
+        filteredUsersList =
+            allUsers.where((users) => users['type'] == filter).toList();
       }
     });
   }
 
-  void _searchChats(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        filteredChats = allChats
-            .where((chat) =>
-                chat['type'] == selectedFilter || selectedFilter == 'all')
-            .toList();
-      } else {
-        filteredChats = filteredChats
-            .where((chat) =>
-                chat['name']!.toLowerCase().contains(query.toLowerCase()) ||
-                chat['message']!.toLowerCase().contains(query.toLowerCase()))
-            .toList();
-      }
+  /// Controller for pull-to-refresh functionality
+  final RefreshController _refreshController = RefreshController(initialRefresh: false);
+
+  void _onRefresh() async{
+    // monitor network fetch
+    await Future.delayed(const Duration(milliseconds: 1000),(){
+      ref.watch(userViewModelProvider.notifier).fetchUsers();
     });
+    _refreshController.refreshCompleted();
   }
+
+
 
   @override
   Widget build(BuildContext context) {
+    final stateProvider = ref.watch(userViewModelProvider);
+    final provider = ref.watch(userViewModelProvider.notifier);
     return Scaffold(
       appBar: appBar(context),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CustomTextField(
-            fillColor: AppColors.kLightGrey,
-            isFilled: true,
-            controller: _searchController,
-            onChanged: _searchChats,
-            prefixIcon: AppAsset.search,
-            hint: 'Search here',
-          ),
-          const Gap(20),
-          Padding(
-            padding: const EdgeInsets.only(left: 10),
-            child: Row(
-              children: [
-                _buildChip(
-                  page,
-                  selectedIndex: 0,
-                  label: 'All',
-                  onTap: () => _navigate(0),
+      body: SmartRefresher(
+        enablePullDown: true,
+        enablePullUp: false,
+        controller: _refreshController,
+        onRefresh: _onRefresh,
+        child: Skeletonizer(
+          enabled: stateProvider.isLoading,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CustomTextField(
+                fillColor: AppColors.kLightGrey,
+                isFilled: true,
+                controller: provider.searchController,
+                onChanged:(query){
+                  setState(() {
+                    provider.filteredUsers = provider.filterUsersByName(provider.users, query);
+                  });
+
+                },
+                prefixIcon: AppAsset.search,
+                hint: 'Search here',
+              ),
+              const Gap(20),
+              Padding(
+                padding: const EdgeInsets.only(left: 10),
+                child: Row(
+                  children: [
+                    _buildChip(
+                      page,
+                      selectedIndex: 0,
+                      label: 'All',
+                      onTap: () => _navigate(0),
+                    ),
+                    const Gap(10),
+                    _buildChip(
+                      page,
+                      selectedIndex: 1,
+                      label: 'Groups',
+                      onTap: () => _navigate(1),
+                    ),
+                    const Gap(10),
+                    _buildChip(
+                      page,
+                      selectedIndex: 2,
+                      label: 'Unread',
+                      onTap: () => _navigate(2),
+                    ),
+                  ],
                 ),
-                const Gap(10),
-                _buildChip(
-                  page,
-                  selectedIndex: 1,
-                  label: 'Groups',
-                  onTap: () => _navigate(1),
-                ),
-                const Gap(10),
-                _buildChip(
-                  page,
-                  selectedIndex: 2,
-                  label: 'Unread',
-                  onTap: () => _navigate(2),
-                ),
-              ],
-            ),
-          ),
-          const Gap(10),
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: 3,
-              itemBuilder: (context, index) => ListView.builder(
-                  itemCount: filteredChats.length,
-                  itemBuilder: (context, index) {
-                    final chat = filteredChats[index];
-                    return Slidable(
-                      endActionPane: ActionPane(
-                        extentRatio: 0.2,
-                        motion: const ScrollMotion(),
-                        children: [
-                          SlidableAction(
-                            onPressed: (context) {},
-                            backgroundColor: AppColors.kBlue,
-                            foregroundColor: Colors.white,
-                            icon: Icons.more_horiz,
-                            label: 'More',
+              ),
+              const Gap(10),
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: 3,
+                  itemBuilder: (context, index) => ListView.builder(
+                      itemCount: provider.filteredUsers.length,
+                      itemBuilder: (context, index) {
+                        final usersList = provider.filteredUsers[index];
+                        return Slidable(
+                          endActionPane: ActionPane(
+                            extentRatio: 0.2,
+                            motion: const ScrollMotion(),
+                            children: [
+                              SlidableAction(
+                                onPressed: (context) {},
+                                backgroundColor: AppColors.kBlue,
+                                foregroundColor: Colors.white,
+                                icon: Icons.more_horiz,
+                                label: 'More',
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: Container(
-                        height: fullHeight(context) * 0.071,
-                        decoration: const BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                              color: Color(0xffF3F3F3),
+                          child: Container(
+                            height: fullHeight(context) * 0.071,
+                            decoration: const BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: Color(0xffF3F3F3),
+                                ),
+                              ),
                             ),
+                            child: ListTile(
+                              leading: Stack(
+                                children: [_buildAvatar(context)],
+                              ),
+                              title: TextView(
+                                text: usersList.name.toString(),
+                                fontWeight: FontWeight.w500,
+                                color: const Color(0xff0E0D1E),
+                                fontSize: 15,
+                              ),
+                              subtitle: TextView(
+                                text: usersList.email!,
+                                color: AppColors.primaryTextColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              trailing: const TextView(
+                                text: '1 hour',
+                                color: AppColors.kBlue,
+                                fontWeight: FontWeight.w400,
+                                fontSize: 13,
+                              ),
+                            )
+
                           ),
-                        ),
-                        child: ListTile(
-                          leading: Stack(
-                            children: [_buildAvatar(chat, context)],
-                          ),
-                          title: TextView(
-                            text: chat['name']!,
-                            fontWeight: FontWeight.w500,
-                            color: const Color(0xff0E0D1E),
-                            fontSize: 15,
-                          ),
-                          subtitle: TextView(
-                            text: chat['message']!,
-                            color: AppColors.primaryTextColor,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w400,
-                          ),
-                          trailing: TextView(
-                            text: chat['time']!,
-                            color: AppColors.kBlue,
-                            fontWeight: FontWeight.w400,
-                            fontSize: 13,
-                          ),
-                        )
-                            .animate()
-                            .fadeIn(delay: Duration(milliseconds: index * 100))
-                            .slideX(begin: 1.0, duration: 300.ms),
-                      ),
-                    );
-                  }),
-            ),
+                        );
+                      }),
+                ),
+              ),
+              Center(
+                child: CustomAppButton(
+                  color: AppColors.kBlack,
+                  isActive: true,
+                  height: fullHeight(context) * 0.039,
+                  width: 162,
+                  title: 'Send new message',
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              Gap(fullWidth(context) * 0.2),
+            ],
           ),
-          Center(
-            child: CustomAppButton(
-              color: AppColors.kBlack,
-              isActive: true,
-              height: fullHeight(context) * 0.039,
-              width: 162,
-              title: 'Send new message',
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-          Gap(fullWidth(context) * 0.2),
-        ],
+        ),
       ),
-      floatingActionButton: const Card(
-        shape: CircleBorder(),
-        elevation: 3,
-        child: CircleAvatar(
-          backgroundColor: AppColors.kBlue,
-          radius: 40,
-          child: Center(
-              child: Icon(
-            Icons.add,
-            size: 40,
-          )),
+      floatingActionButton: GestureDetector(
+
+        onTap: ()=>  ref.read(userViewModelProvider.notifier).fetchUsers() ,
+        child: const Card(
+          shape: CircleBorder(),
+          elevation: 3,
+          child: CircleAvatar(
+            backgroundColor: AppColors.kBlue,
+            radius: 40,
+            child: Center(
+                child: Icon(
+              Icons.add,
+              size: 40,
+            )),
+          ),
         ),
       ),
     );
@@ -358,7 +393,7 @@ Widget _buildChip(index, {label, selectedIndex, onTap}) {
   );
 }
 
-Widget _buildAvatar(Map<String, String> chat, BuildContext context) {
+Widget _buildAvatar(BuildContext context) {
   return GestureDetector(
     onTap: () {
       context.push(Constants.contactScreen);
@@ -366,16 +401,10 @@ Widget _buildAvatar(Map<String, String> chat, BuildContext context) {
     child: Stack(
       children: [
         CircleAvatar(
-          backgroundImage:
-              chat.containsKey('image') ? AssetImage(chat['image']!) : null,
+          backgroundImage: AssetImage(AppAsset.person),
           backgroundColor: AppColors.kLightGrey,
-          child: chat['type'] == 'single' && !chat.containsKey('image')
-              ? SvgPicture.asset(AppAsset.person)
-              : chat['type'] == 'group' && !chat.containsKey('image')
-                  ? SvgPicture.asset(AppAsset.groupIcon)
-                  : const SizedBox.shrink(),
+          child: SvgPicture.asset(AppAsset.person)
         ),
-        if (chat['type'] == 'group')
           Positioned(
             bottom: 0,
             right: 0,

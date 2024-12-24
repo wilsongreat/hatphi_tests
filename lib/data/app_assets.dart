@@ -13,3 +13,4 @@ class AppAsset {
   static String placeHolder = 'placeHolder'.jpeg;
   static String checkIcon = 'check'.svg;
 }
+

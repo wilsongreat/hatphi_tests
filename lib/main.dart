@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hatphi_test/theme.dart';
 
 import 'config/router.dart';
@@ -7,7 +8,7 @@ final GlobalKey<NavigatorState> appNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'root');
 
 void main() {
-  runApp(const MyApp());
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends StatelessWidget {
